@@ -24,6 +24,8 @@
     <div class="row">
       <label class="row"><input id="save_note" type="checkbox" checked /> Save as note</label>
       <button id="extract">Extract</button>
+      <button id="extract_llm">Extract LLM</button>
+      <button id="list_notes">List Notes</button>
     </div>
 
     <div class="items" id="items"></div>
@@ -31,13 +33,28 @@
     <script>
       const $ = (sel) => document.querySelector(sel);
       const itemsEl = $('#items');
-      const btn = $('#extract');
-      btn.addEventListener('click', async () => {
+
+      const KAOMOJI = [
+        '( ᵔ ᵕ ᵔ )',
+        '(ง •̀_•́)ง',
+        '(≧▽≦)',
+        '(•‿•)',
+        '(｡•̀ᴗ-)✧',
+        '(ಠ_ಠ)',
+        '(•ᴗ•)',
+        '(￣▽￣)',
+        '(╯°□°）╯︵ ┻━┻',
+        '¯\\_(ツ)_/¯',
+      ];
+
+      const randomKaomoji = () => KAOMOJI[Math.floor(Math.random() * KAOMOJI.length)];
+
+      async function extractToChecklist(endpoint) {
         const text = $('#text').value;
         const save = $('#save_note').checked;
         itemsEl.textContent = 'Extracting...';
         try {
-          const res = await fetch('/action-items/extract', {
+          const res = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text, save_note: save }),
@@ -49,7 +66,7 @@
             return;
           }
           itemsEl.innerHTML = data.items.map(it => (
-            `<div class="item"><input type="checkbox" data-id="${it.id}" /> <span>${it.text}</span></div>`
+            `<div class="item"><input type="checkbox" data-id="${it.id}" /> <span>${it.text} <span class="muted">${randomKaomoji()}</span></span></div>`
           )).join('');
           itemsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
             cb.addEventListener('change', async (e) => {
@@ -64,6 +81,35 @@
         } catch (err) {
           console.error(err);
           itemsEl.textContent = 'Error extracting items';
+        }
+      }
+
+      $('#extract').addEventListener('click', async () => {
+        await extractToChecklist('/action-items/extract');
+      });
+
+      $('#extract_llm').addEventListener('click', async () => {
+        await extractToChecklist('/action-items/extract-llm');
+      });
+
+      $('#list_notes').addEventListener('click', async () => {
+        itemsEl.textContent = 'Loading notes...';
+        try {
+          const res = await fetch('/notes?limit=13');
+          if (!res.ok) throw new Error('Request failed');
+          const notes = await res.json();
+          if (!notes || notes.length === 0) {
+            itemsEl.innerHTML = '<p class="muted">No notes found.</p>';
+            return;
+          }
+
+          // Display saved notes as-is (no processing).
+          itemsEl.innerHTML = notes.map(n => (
+            `<div class="item"><span>${n.content}</span></div>`
+          )).join('');
+        } catch (err) {
+          console.error(err);
+          itemsEl.textContent = 'Error listing notes';
         }
       });
 

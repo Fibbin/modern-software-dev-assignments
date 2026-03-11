@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -7,22 +8,41 @@ from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
-DB_PATH = DATA_DIR / "app.db"
+DEFAULT_DB_PATH = DATA_DIR / "app.db"
 
 
-def ensure_data_directory_exists() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+def get_db_path() -> str:
+    """
+    Return sqlite path/URI.
+
+    - If env var DB_PATH is set, use it (supports ":memory:")
+    - Otherwise use the default under week2/app/data/app.db
+    """
+    configured = os.getenv("DB_PATH")
+    if configured:
+        return configured
+    return str(DEFAULT_DB_PATH)
+
+
+def _ensure_parent_dir_exists(db_path: str) -> None:
+    # sqlite supports special value ":memory:" which has no directory
+    if db_path == ":memory:":
+        return
+    p = Path(db_path)
+    parent = p.parent
+    if parent and not str(parent).strip() == "":
+        parent.mkdir(parents=True, exist_ok=True)
 
 
 def get_connection() -> sqlite3.Connection:
-    ensure_data_directory_exists()
-    connection = sqlite3.connect(DB_PATH)
+    db_path = get_db_path()
+    _ensure_parent_dir_exists(db_path)
+    connection = sqlite3.connect(db_path)
     connection.row_factory = sqlite3.Row
     return connection
 
 
 def init_db() -> None:
-    ensure_data_directory_exists()
     with get_connection() as connection:
         cursor = connection.cursor()
         cursor.execute(
@@ -57,10 +77,13 @@ def insert_note(content: str) -> int:
         return int(cursor.lastrowid)
 
 
-def list_notes() -> list[sqlite3.Row]:
+def list_notes(limit: int = 13) -> list[sqlite3.Row]:
     with get_connection() as connection:
         cursor = connection.cursor()
-        cursor.execute("SELECT id, content, created_at FROM notes ORDER BY id DESC")
+        cursor.execute(
+            "SELECT id, content, created_at FROM notes ORDER BY id DESC LIMIT ?",
+            (int(limit),),
+        )
         return list(cursor.fetchall())
 
 
@@ -104,7 +127,7 @@ def list_action_items(note_id: Optional[int] = None) -> list[sqlite3.Row]:
         return list(cursor.fetchall())
 
 
-def mark_action_item_done(action_item_id: int, done: bool) -> None:
+def mark_action_item_done(action_item_id: int, done: bool) -> bool:
     with get_connection() as connection:
         cursor = connection.cursor()
         cursor.execute(
@@ -112,5 +135,6 @@ def mark_action_item_done(action_item_id: int, done: bool) -> None:
             (1 if done else 0, action_item_id),
         )
         connection.commit()
+        return cursor.rowcount > 0
 
 
