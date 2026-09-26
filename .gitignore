@@ -52,3 +52,5 @@ Thumbs.db
 
 # Vercel
 .vercel/*
+
+*.env.txt
