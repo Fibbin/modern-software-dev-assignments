@@ -1,0 +1,9 @@
+---
+name: Week5 Windows Check & Test Runner
+command: "python -m pytest -q backend/tests && ruff check . && black --check ."
+tags:
+  - week5
+  - testing
+  - linting
+  - windows
+description: Runs pytest, ruff, and black checks natively on Windows PowerShell where GNU Make targets are unavailable.
