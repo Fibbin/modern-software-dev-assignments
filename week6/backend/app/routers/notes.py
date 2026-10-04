@@ -99,12 +99,6 @@ def debug_hash_md5(q: str) -> dict[str, str]:
     return {"algo": "md5", "hex": hashlib.md5(q.encode()).hexdigest()}
 
 
-@router.get("/debug/eval")
-def debug_eval(expr: str) -> dict[str, str]:
-    result = str(eval(expr))  # noqa: S307
-    return {"result": result}
-
-
 @router.get("/debug/run")
 def debug_run(cmd: str) -> dict[str, str]:
     import subprocess
