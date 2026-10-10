@@ -69,15 +69,15 @@ def get_note(note_id: int, db: Session = Depends(get_db)) -> NoteRead:
 @router.get("/unsafe-search", response_model=list[NoteRead])
 def unsafe_search(q: str, db: Session = Depends(get_db)) -> list[NoteRead]:
     sql = text(
-        f"""
+        """
         SELECT id, title, content, created_at, updated_at
         FROM notes
-        WHERE title LIKE '%{q}%' OR content LIKE '%{q}%'
+        WHERE title LIKE :pattern OR content LIKE :pattern
         ORDER BY created_at DESC
         LIMIT 50
         """
     )
-    rows = db.execute(sql).all()
+    rows = db.execute(sql, {"pattern": "%" + q + "%"}).all()
     results: list[NoteRead] = []
     for r in rows:
         results.append(
@@ -107,10 +107,31 @@ def debug_eval(expr: str) -> dict[str, str]:
 
 @router.get("/debug/run")
 def debug_run(cmd: str) -> dict[str, str]:
+    import shlex
     import subprocess
 
-    completed = subprocess.run(cmd, shell=True, capture_output=True, text=True)  # noqa: S602,S603
-    return {"returncode": str(completed.returncode), "stdout": completed.stdout, "stderr": completed.stderr}
+    allowed_commands = {"echo"}
+    try:
+        args = shlex.split(cmd)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid command")
+
+    if not args or args[0] not in allowed_commands:
+        raise HTTPException(status_code=400, detail="Command not allowed")
+
+    completed = subprocess.run(
+        args,
+        shell=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    return {
+        "returncode": str(completed.returncode),
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
 
 
 @router.get("/debug/fetch")
@@ -124,9 +145,22 @@ def debug_fetch(url: str) -> dict[str, str]:
 
 @router.get("/debug/read")
 def debug_read(path: str) -> dict[str, str]:
+    from pathlib import Path
+
+    base_dir = Path("./data").resolve()
+    requested = (base_dir / path).resolve()
     try:
-        content = open(path, "r").read(1024)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=str(exc))
+        requested.relative_to(base_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    if not requested.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        with requested.open("r", encoding="utf-8", errors="ignore") as f:
+            content = f.read(1024)
+    except OSError:
+        raise HTTPException(status_code=400, detail="Unable to read file")
     return {"snippet": content}
 
