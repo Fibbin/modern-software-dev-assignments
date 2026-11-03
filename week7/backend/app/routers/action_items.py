@@ -1,36 +1,40 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import asc, desc, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import ActionItem
+from ..query import apply_sort_and_pagination
 from ..schemas import ActionItemCreate, ActionItemPatch, ActionItemRead
 
 router = APIRouter(prefix="/action-items", tags=["action_items"])
+
+ACTION_SORT_FIELDS = {"id", "description", "completed", "created_at", "updated_at"}
 
 
 @router.get("/", response_model=list[ActionItemRead])
 def list_items(
     db: Session = Depends(get_db),
     completed: Optional[bool] = None,
-    skip: int = 0,
-    limit: int = Query(50, le=200),
-    sort: str = Query("-created_at"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    sort: str = Query("-created_at", description="Sort by field, prefix with - for desc"),
 ) -> list[ActionItemRead]:
     stmt = select(ActionItem)
     if completed is not None:
         stmt = stmt.where(ActionItem.completed.is_(completed))
 
-    sort_field = sort.lstrip("-")
-    order_fn = desc if sort.startswith("-") else asc
-    if hasattr(ActionItem, sort_field):
-        stmt = stmt.order_by(order_fn(getattr(ActionItem, sort_field)))
-    else:
-        stmt = stmt.order_by(desc(ActionItem.created_at))
-
-    rows = db.execute(stmt.offset(skip).limit(limit)).scalars().all()
+    stmt = apply_sort_and_pagination(
+        stmt,
+        ActionItem,
+        skip=skip,
+        limit=limit,
+        sort=sort,
+        allowed_fields=ACTION_SORT_FIELDS,
+    )
+    rows = db.execute(stmt).scalars().all()
     return [ActionItemRead.model_validate(row) for row in rows]
 
 
